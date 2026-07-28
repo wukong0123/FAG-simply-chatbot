@@ -60,3 +60,24 @@ def test_metadata_mismatch(tmp_path):
     )
     with pytest.raises(StorageError, match="không khớp"):
         Retriever(config=config, embed_fn=lambda _: [1, 0])
+
+
+def test_duplicate_alias_records_are_collapsed(tmp_path):
+    config = make_config(tmp_path)
+    faqs = json.loads(config.faq_data_path.read_text(encoding="utf-8"))
+    records = [
+        {**faqs[0], "matched_text": "A"},
+        {**faqs[0], "matched_text": "Alias A"},
+        {**faqs[1], "matched_text": "B"},
+    ]
+    np.save(
+        config.embeddings_path,
+        np.array([[1, 0], [0.99, 0.01], [0, 1]], dtype=np.float32),
+    )
+    config.metadata_path.write_text(
+        json.dumps({"faqs": records, "content_hash": faq_content_hash(faqs)}),
+        encoding="utf-8",
+    )
+    retriever = Retriever(config=config, embed_fn=lambda _: [1, 0])
+    matches, _ = retriever.retrieve("query", top_k=2)
+    assert [item["id"] for item in matches] == [1, 2]

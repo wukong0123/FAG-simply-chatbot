@@ -71,7 +71,12 @@ class OllamaClient:
         except Exception as exc:
             raise self._friendly_error(exc, self.config.embedding_model) from exc
 
-    def chat(self, question: str, matches: list[dict[str, Any]]) -> str:
+    def chat(
+        self,
+        question: str,
+        matches: list[dict[str, Any]],
+        history: list[dict[str, str]] | None = None,
+    ) -> str:
         """Generate a grounded Vietnamese answer."""
         context_blocks = []
         for index, item in enumerate(matches, start=1):
@@ -93,13 +98,18 @@ class OllamaClient:
             f"CONTEXT:\n{chr(10).join(context_blocks)}\n\n"
             f"CÂU HỎI CỦA NGƯỜI DÙNG:\n{question}"
         )
+        recent_history = (history or [])[-8:]
+        messages = [{"role": "system", "content": system}]
+        messages.extend(
+            {"role": item["role"], "content": item["content"]}
+            for item in recent_history
+            if item.get("role") in {"user", "assistant"} and item.get("content")
+        )
+        messages.append({"role": "user", "content": user})
         try:
             response = self.client.chat(
                 model=self.config.chat_model,
-                messages=[
-                    {"role": "system", "content": system},
-                    {"role": "user", "content": user},
-                ],
+                messages=messages,
                 options={"temperature": 0.1},
             )
             content = response["message"]["content"].strip()

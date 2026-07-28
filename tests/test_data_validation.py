@@ -27,6 +27,17 @@ def test_duplicate_id():
         validate_faqs(VALID * 2)
 
 
+def test_valid_aliases_are_normalized():
+    faq = {**VALID[0], "aliases": [" Cách hỏi khác? ", "Cách hỏi khác?"]}
+    assert validate_faqs([faq])[0]["aliases"] == ["Cách hỏi khác?"]
+
+
+def test_invalid_aliases():
+    faq = {**VALID[0], "aliases": [""]}
+    with pytest.raises(DataValidationError, match="aliases"):
+        validate_faqs([faq])
+
+
 def test_invalid_json(tmp_path):
     path = tmp_path / "bad.json"
     path.write_text("{invalid", encoding="utf-8")

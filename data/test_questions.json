@@ -18,5 +18,7 @@
   {"id":"T17","question":"What is today's weather?","expected_faq_id":null,"type":"out_of_scope","should_reject":true},
   {"id":"T18","question":"How do I reset my password?","expected_faq_id":null,"type":"out_of_scope","should_reject":true},
   {"id":"T19","question":"Give me a pasta recipe","expected_faq_id":null,"type":"out_of_scope","should_reject":true},
-  {"id":"T20","question":"Why will the audience be so large?","expected_faq_id":30,"type":"paraphrase","should_reject":false}
+  {"id":"T20","question":"Why will the audience be so large?","expected_faq_id":30,"type":"paraphrase","should_reject":false},
+  {"id":"T21","question":"Trong các nước chủ nhà thì mỗi nước sẽ được đá bao nhiêu trận ở đó?","expected_faq_id":32,"type":"paraphrase","should_reject":false},
+  {"id":"T22","question":"Mexico có thể làm chủ nhà bao nhiêu trận ở nước họ?","expected_faq_id":20,"type":"paraphrase","should_reject":false}
 ]

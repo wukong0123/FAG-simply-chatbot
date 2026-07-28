@@ -66,8 +66,16 @@ class Retriever:
         if not clean_question:
             raise ValueError("Vui lòng nhập câu hỏi.")
         scores = cosine_scores(self.embeddings, self._embed_query(clean_question))
-        limit = min(top_k or self.config.top_k, len(self.faqs))
-        indices = np.argsort(scores)[::-1][:limit]
-        matches = [{**self.faqs[int(i)], "score": float(scores[int(i)])} for i in indices]
+        limit = min(top_k or self.config.top_k, len({faq["id"] for faq in self.faqs}))
+        matches = []
+        seen_ids: set[Any] = set()
+        for index in np.argsort(scores)[::-1]:
+            faq = self.faqs[int(index)]
+            if faq["id"] in seen_ids:
+                continue
+            seen_ids.add(faq["id"])
+            matches.append({**faq, "score": float(scores[int(index)])})
+            if len(matches) == limit:
+                break
         rejected = not matches or matches[0]["score"] < self.config.similarity_threshold
         return matches, rejected

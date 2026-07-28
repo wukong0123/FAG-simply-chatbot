@@ -36,14 +36,25 @@ def validate_faqs(raw: Any) -> list[dict[str, Any]]:
         category = item.get("category", "general")
         if not isinstance(category, str) or not category.strip():
             category = "general"
-        result.append(
-            {
-                "id": faq_id,
-                "question": " ".join(question.split()),
-                "answer": " ".join(answer.split()),
-                "category": " ".join(category.split()),
-            }
+        aliases = item.get("aliases", [])
+        if not isinstance(aliases, list) or any(
+            not isinstance(alias, str) or not alias.strip() for alias in aliases
+        ):
+            raise DataValidationError(
+                f"FAQ id {faq_id!r}: aliases phải là danh sách chuỗi không rỗng."
+            )
+        normalized_aliases = list(
+            dict.fromkeys(" ".join(alias.split()) for alias in aliases)
         )
+        normalized = {
+            "id": faq_id,
+            "question": " ".join(question.split()),
+            "answer": " ".join(answer.split()),
+            "category": " ".join(category.split()),
+        }
+        if normalized_aliases:
+            normalized["aliases"] = normalized_aliases
+        result.append(normalized)
     if not result:
         raise DataValidationError("Danh sách FAQ không được rỗng.")
     return result

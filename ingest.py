@@ -19,15 +19,19 @@ def ingest(client: OllamaClient | None = None) -> tuple[int, int]:
     started = time.perf_counter()
     faqs = load_faqs(settings.faq_data_path)
     LOGGER.info("Đã đọc %d FAQ.", len(faqs))
-    texts = [
-        f"Câu hỏi: {faq['question']}\nChủ đề: {faq['category']}" for faq in faqs
-    ]
+    texts = []
+    embedding_records = []
+    for faq in faqs:
+        variants = [faq["question"], *faq.get("aliases", [])]
+        for variant in variants:
+            texts.append(f"Câu hỏi: {variant}\nChủ đề: {faq['category']}")
+            embedding_records.append({**faq, "matched_text": variant})
     service = client or OllamaClient()
     vectors = service.embed(texts)
     normalized = [normalize_vector(np.asarray(vector)) for vector in vectors]
     dimensions = {vector.shape[0] for vector in normalized}
-    if len(normalized) != len(faqs):
-        raise ValueError("Số embedding trả về không khớp số FAQ.")
+    if len(normalized) != len(embedding_records):
+        raise ValueError("Số embedding trả về không khớp số văn bản FAQ và alias.")
     if len(dimensions) != 1:
         raise ValueError("Các embedding không có cùng số chiều.")
     matrix = np.vstack(normalized).astype(np.float32)
@@ -39,13 +43,14 @@ def ingest(client: OllamaClient | None = None) -> tuple[int, int]:
         "content_hash": faq_content_hash(faqs),
         "embedding_model": settings.embedding_model,
         "dimensions": matrix.shape[1],
-        "faqs": faqs,
+        "faqs": embedding_records,
     }
     settings.metadata_path.write_text(
         json.dumps(metadata, ensure_ascii=False, indent=2), encoding="utf-8"
     )
     LOGGER.info("Model embedding: %s", settings.embedding_model)
     LOGGER.info("Số chiều vector: %d", matrix.shape[1])
+    LOGGER.info("Số vector FAQ và alias: %d", matrix.shape[0])
     LOGGER.info("Đã lưu: %s", settings.embeddings_path)
     LOGGER.info("Đã lưu: %s", settings.metadata_path)
     LOGGER.info("Hoàn thành trong %.2f giây.", time.perf_counter() - started)
