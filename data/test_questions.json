@@ -1,0 +1,22 @@
+[
+  {"id":"T01","question":"What is the FIFA World Cup 2026?","expected_faq_id":1,"type":"exact","should_reject":false},
+  {"id":"T02","question":"Which countries host the 2026 World Cup?","expected_faq_id":2,"type":"exact","should_reject":false},
+  {"id":"T03","question":"Which stadium hosts the final?","expected_faq_id":17,"type":"exact","should_reject":false},
+  {"id":"T04","question":"How many nations will play in 2026?","expected_faq_id":3,"type":"paraphrase","should_reject":false},
+  {"id":"T05","question":"What are the tournament dates?","expected_faq_id":5,"type":"paraphrase","should_reject":false},
+  {"id":"T06","question":"How many games will be held?","expected_faq_id":6,"type":"paraphrase","should_reject":false},
+  {"id":"T07","question":"Who won the last World Cup?","expected_faq_id":14,"type":"paraphrase","should_reject":false},
+  {"id":"T08","question":"Where will the championship match be played?","expected_faq_id":17,"type":"paraphrase","should_reject":false},
+  {"id":"T09","question":"how many groops are ther","expected_faq_id":9,"type":"typo","should_reject":false},
+  {"id":"T10","question":"wich teams qualify automaticaly","expected_faq_id":8,"type":"typo","should_reject":false},
+  {"id":"T11","question":"how meny players per teem","expected_faq_id":26,"type":"typo","should_reject":false},
+  {"id":"T12","question":"Who runs the competition?","expected_faq_id":22,"type":"synonym","should_reject":false},
+  {"id":"T13","question":"What comes after the group phase?","expected_faq_id":12,"type":"ambiguous","should_reject":false},
+  {"id":"T14","question":"How many teams and matches are there?","expected_faq_id":3,"type":"multi_intent","should_reject":false},
+  {"id":"T15","question":"How many matches do Canada and Mexico host?","expected_faq_id":19,"type":"multi_intent","should_reject":false},
+  {"id":"T16","question":"How frequently does this event happen?","expected_faq_id":23,"type":"paraphrase","should_reject":false},
+  {"id":"T17","question":"What is today's weather?","expected_faq_id":null,"type":"out_of_scope","should_reject":true},
+  {"id":"T18","question":"How do I reset my password?","expected_faq_id":null,"type":"out_of_scope","should_reject":true},
+  {"id":"T19","question":"Give me a pasta recipe","expected_faq_id":null,"type":"out_of_scope","should_reject":true},
+  {"id":"T20","question":"Why will the audience be so large?","expected_faq_id":30,"type":"paraphrase","should_reject":false}
+]

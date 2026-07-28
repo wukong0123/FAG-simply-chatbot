@@ -1,0 +1,5 @@
+chainlit
+ollama
+numpy
+python-dotenv
+pytest

@@ -1,0 +1,112 @@
+"""Small Ollama API wrapper with user-friendly errors."""
+
+import logging
+from typing import Any
+
+from config import Settings, settings
+
+LOGGER = logging.getLogger(__name__)
+
+
+class OllamaServiceError(RuntimeError):
+    """An actionable Ollama service error."""
+
+
+class OllamaClient:
+    """Call Ollama for health checks, embeddings, and chat."""
+
+    def __init__(self, config: Settings = settings) -> None:
+        try:
+            import ollama
+        except ImportError as exc:
+            raise OllamaServiceError(
+                "Chưa cài package ollama. Hãy chạy: pip install -r requirements.txt"
+            ) from exc
+        self.config = config
+        self.client = ollama.Client(
+            host=config.ollama_base_url, timeout=config.request_timeout_seconds
+        )
+
+    def _friendly_error(self, exc: Exception, model: str | None = None) -> OllamaServiceError:
+        status = getattr(exc, "status_code", None)
+        text = str(exc).lower()
+        if status == 403 or "403" in text:
+            return OllamaServiceError(
+                "Model cloud yêu cầu quyền truy cập hoặc subscription (HTTP 403)."
+            )
+        if status == 429 or "429" in text:
+            return OllamaServiceError(
+                "Đã vượt quota hoặc rate limit (HTTP 429). Vui lòng thử lại sau."
+            )
+        if "not found" in text and model:
+            return OllamaServiceError(
+                f"Không tìm thấy model {model}.\nHãy chạy: ollama pull {model}"
+            )
+        if "connect" in text or "refused" in text:
+            return OllamaServiceError(
+                f"Không thể kết nối tới Ollama tại {self.config.ollama_base_url}.\n"
+                "Hãy mở Ollama hoặc chạy: ollama serve"
+            )
+        return OllamaServiceError(f"Ollama trả về lỗi: {exc}")
+
+    def check_server(self) -> None:
+        """Check that Ollama is reachable."""
+        try:
+            self.client.list()
+        except Exception as exc:
+            raise self._friendly_error(exc) from exc
+
+    def embed(self, texts: str | list[str]) -> list[list[float]]:
+        """Create embeddings and return them as a batch."""
+        try:
+            response = self.client.embed(
+                model=self.config.embedding_model, input=texts
+            )
+            vectors = response.get("embeddings", [])
+            if not vectors:
+                raise OllamaServiceError("Ollama trả về embedding rỗng.")
+            return vectors
+        except OllamaServiceError:
+            raise
+        except Exception as exc:
+            raise self._friendly_error(exc, self.config.embedding_model) from exc
+
+    def chat(self, question: str, matches: list[dict[str, Any]]) -> str:
+        """Generate a grounded Vietnamese answer."""
+        context_blocks = []
+        for index, item in enumerate(matches, start=1):
+            context_blocks.append(
+                f"[FAQ {index}]\nCâu hỏi: {item['question']}\n"
+                f"Câu trả lời: {item['answer']}"
+            )
+        system = (
+            "Bạn là chatbot FAQ nội bộ.\n\n"
+            "Chỉ trả lời dựa trên phần CONTEXT được cung cấp. "
+            "Không tự thêm chính sách, số liệu, tên người hoặc thông tin không có "
+            "trong CONTEXT. Nếu CONTEXT không đủ để trả lời, hãy nói: "
+            '"Tôi chưa tìm thấy thông tin phù hợp trong dữ liệu hiện có."\n\n'
+            "Trả lời bằng tiếng Việt, ngắn gọn, rõ ràng. Nếu có nhiều thông tin "
+            "liên quan, trình bày theo từng ý. Không nhắc đến embedding, vector "
+            "hoặc thuật toán nội bộ cho người dùng cuối."
+        )
+        user = (
+            f"CONTEXT:\n{chr(10).join(context_blocks)}\n\n"
+            f"CÂU HỎI CỦA NGƯỜI DÙNG:\n{question}"
+        )
+        try:
+            response = self.client.chat(
+                model=self.config.chat_model,
+                messages=[
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": user},
+                ],
+                options={"temperature": 0.1},
+            )
+            content = response["message"]["content"].strip()
+            if not content:
+                raise OllamaServiceError("Chat model trả về nội dung rỗng.")
+            return content
+        except OllamaServiceError:
+            raise
+        except Exception as exc:
+            raise self._friendly_error(exc, self.config.chat_model) from exc
