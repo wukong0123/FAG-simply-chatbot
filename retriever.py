@@ -7,7 +7,7 @@ from typing import Any, Callable
 import numpy as np
 
 from config import Settings, settings
-from ollama_client import OllamaClient
+from embedding_client import EmbeddingClient, create_embedding_client
 from utils import cosine_scores, faq_content_hash, load_faqs
 
 
@@ -20,7 +20,7 @@ class Retriever:
 
     def __init__(
         self,
-        client: OllamaClient | None = None,
+        client: EmbeddingClient | None = None,
         config: Settings = settings,
         embed_fn: Callable[[str], list[float] | np.ndarray] | None = None,
     ) -> None:
@@ -44,6 +44,14 @@ class Retriever:
             raise StorageError(f"Dữ liệu embedding bị hỏng: {exc}") from exc
         if matrix.ndim != 2 or matrix.shape[0] != len(faqs):
             raise StorageError("Số lượng metadata không khớp số vector.")
+        if (
+            metadata.get("embedding_provider") != self.config.embedding_provider
+            or metadata.get("embedding_model") != self.config.embedding_model
+        ):
+            raise StorageError(
+                "Embedding đã lưu được tạo bởi provider/model khác cấu hình hiện tại.\n"
+                "Hãy chạy lại: python ingest.py"
+            )
         current_faqs = load_faqs(self.config.faq_data_path)
         if metadata.get("content_hash") != faq_content_hash(current_faqs):
             raise StorageError(
@@ -55,7 +63,7 @@ class Retriever:
     def _embed_query(self, question: str) -> np.ndarray:
         if self.embed_fn:
             return np.asarray(self.embed_fn(question), dtype=np.float32)
-        service = self.client or OllamaClient(self.config)
+        service = self.client or create_embedding_client(self.config)
         return np.asarray(service.embed(question)[0], dtype=np.float32)
 
     def retrieve(

@@ -5,6 +5,7 @@ import logging
 import chainlit as cl
 
 from config import settings
+from embedding_client import EmbeddingServiceError, create_embedding_client
 from ollama_client import OllamaClient, OllamaServiceError
 from retriever import Retriever, StorageError
 
@@ -20,7 +21,7 @@ async def on_chat_start() -> None:
     try:
         client = OllamaClient()
         client.check_server()
-        retriever = Retriever(client=client)
+        retriever = Retriever(client=create_embedding_client())
         cl.user_session.set("client", client)
         cl.user_session.set("retriever", retriever)
         cl.user_session.set("history", [])
@@ -30,7 +31,13 @@ async def on_chat_start() -> None:
                 f"Model hiện tại: `{settings.chat_model}`."
             )
         ).send()
-    except (OllamaServiceError, StorageError, ValueError, OSError) as exc:
+    except (
+        OllamaServiceError,
+        EmbeddingServiceError,
+        StorageError,
+        ValueError,
+        OSError,
+    ) as exc:
         LOGGER.exception("Không thể khởi tạo ứng dụng")
         await cl.Message(content=f"Không thể khởi tạo chatbot:\n{exc}").send()
 
@@ -81,7 +88,7 @@ async def on_message(message: cl.Message) -> None:
             )
             response.content = f"{answer}\n\nNguồn tham khảo:\n{sources}"
             answer_for_history = answer
-    except (ValueError, StorageError, OllamaServiceError) as exc:
+    except (ValueError, StorageError, OllamaServiceError, EmbeddingServiceError) as exc:
         LOGGER.exception("Xử lý câu hỏi thất bại")
         response.content = str(exc)
         answer_for_history = response.content

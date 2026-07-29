@@ -20,7 +20,14 @@ def make_config(tmp_path, threshold=0.5):
     faq_path.write_text(json.dumps(faqs), encoding="utf-8")
     np.save(embeddings_path, np.array([[1, 0], [0, 1]], dtype=np.float32))
     metadata_path.write_text(
-        json.dumps({"faqs": faqs, "content_hash": faq_content_hash(faqs)}),
+        json.dumps(
+            {
+                "faqs": faqs,
+                "content_hash": faq_content_hash(faqs),
+                "embedding_provider": settings.embedding_provider,
+                "embedding_model": settings.embedding_model,
+            }
+        ),
         encoding="utf-8",
     )
     return replace(
@@ -75,7 +82,14 @@ def test_duplicate_alias_records_are_collapsed(tmp_path):
         np.array([[1, 0], [0.99, 0.01], [0, 1]], dtype=np.float32),
     )
     config.metadata_path.write_text(
-        json.dumps({"faqs": records, "content_hash": faq_content_hash(faqs)}),
+        json.dumps(
+            {
+                "faqs": records,
+                "content_hash": faq_content_hash(faqs),
+                "embedding_provider": config.embedding_provider,
+                "embedding_model": config.embedding_model,
+            }
+        ),
         encoding="utf-8",
     )
     retriever = Retriever(config=config, embed_fn=lambda _: [1, 0])

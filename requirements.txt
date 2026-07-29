@@ -3,3 +3,4 @@ ollama
 numpy
 python-dotenv
 pytest
+google-genai

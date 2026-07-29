@@ -42,8 +42,12 @@ class Settings:
     """Validated runtime settings."""
 
     ollama_base_url: str
+    ollama_api_key: str
     chat_model: str
+    embedding_provider: str
     embedding_model: str
+    gemini_api_key: str
+    embedding_dimensions: int
     top_k: int
     similarity_threshold: float
     faq_data_path: Path
@@ -54,13 +58,24 @@ class Settings:
 
 def load_settings() -> Settings:
     """Load settings with safe defaults and validation."""
-    base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434").rstrip("/")
+    base_url = os.getenv("OLLAMA_BASE_URL", "https://ollama.com").rstrip("/")
     if not base_url.startswith(("http://", "https://")):
         raise ValueError("OLLAMA_BASE_URL phải bắt đầu bằng http:// hoặc https://.")
+    embedding_provider = os.getenv("EMBEDDING_PROVIDER", "gemini").strip().lower()
+    if embedding_provider not in {"gemini", "ollama"}:
+        raise ValueError("EMBEDDING_PROVIDER phải là 'gemini' hoặc 'ollama'.")
     return Settings(
         ollama_base_url=base_url,
-        chat_model=os.getenv("OLLAMA_CHAT_MODEL", "qwen3:1.7b").strip(),
-        embedding_model=os.getenv("OLLAMA_EMBEDDING_MODEL", "embeddinggemma").strip(),
+        ollama_api_key=os.getenv("OLLAMA_API_KEY", "").strip(),
+        chat_model=os.getenv("OLLAMA_CHAT_MODEL", "gpt-oss:20b").strip(),
+        embedding_provider=embedding_provider,
+        embedding_model=os.getenv(
+            "GEMINI_EMBEDDING_MODEL", "gemini-embedding-001"
+        ).strip()
+        if embedding_provider == "gemini"
+        else os.getenv("OLLAMA_EMBEDDING_MODEL", "embeddinggemma").strip(),
+        gemini_api_key=os.getenv("GEMINI_API_KEY", "").strip(),
+        embedding_dimensions=_positive_int("EMBEDDING_DIMENSIONS", 768),
         top_k=_positive_int("TOP_K", 3),
         similarity_threshold=_threshold("SIMILARITY_THRESHOLD", 0.55),
         faq_data_path=_project_path("FAQ_DATA_PATH", "data/faqs.json"),

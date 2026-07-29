@@ -7,6 +7,11 @@ import time
 import numpy as np
 
 from config import settings
+from embedding_client import (
+    EmbeddingClient,
+    EmbeddingServiceError,
+    create_embedding_client,
+)
 from ollama_client import OllamaClient, OllamaServiceError
 from utils import faq_content_hash, load_faqs, normalize_vector
 
@@ -14,7 +19,7 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 LOGGER = logging.getLogger(__name__)
 
 
-def ingest(client: OllamaClient | None = None) -> tuple[int, int]:
+def ingest(client: EmbeddingClient | None = None) -> tuple[int, int]:
     """Validate FAQs, create embeddings, and save storage files."""
     started = time.perf_counter()
     faqs = load_faqs(settings.faq_data_path)
@@ -26,7 +31,7 @@ def ingest(client: OllamaClient | None = None) -> tuple[int, int]:
         for variant in variants:
             texts.append(f"Câu hỏi: {variant}\nChủ đề: {faq['category']}")
             embedding_records.append({**faq, "matched_text": variant})
-    service = client or OllamaClient()
+    service = client or create_embedding_client()
     vectors = service.embed(texts)
     normalized = [normalize_vector(np.asarray(vector)) for vector in vectors]
     dimensions = {vector.shape[0] for vector in normalized}
@@ -42,6 +47,7 @@ def ingest(client: OllamaClient | None = None) -> tuple[int, int]:
         "version": 1,
         "content_hash": faq_content_hash(faqs),
         "embedding_model": settings.embedding_model,
+        "embedding_provider": settings.embedding_provider,
         "dimensions": matrix.shape[1],
         "faqs": embedding_records,
     }
@@ -49,6 +55,7 @@ def ingest(client: OllamaClient | None = None) -> tuple[int, int]:
         json.dumps(metadata, ensure_ascii=False, indent=2), encoding="utf-8"
     )
     LOGGER.info("Model embedding: %s", settings.embedding_model)
+    LOGGER.info("Embedding provider: %s", settings.embedding_provider)
     LOGGER.info("Số chiều vector: %d", matrix.shape[1])
     LOGGER.info("Số vector FAQ và alias: %d", matrix.shape[0])
     LOGGER.info("Đã lưu: %s", settings.embeddings_path)
@@ -61,6 +68,6 @@ if __name__ == "__main__":
     try:
         ingest()
         print("Ingest thành công.")
-    except (ValueError, OSError, OllamaServiceError) as exc:
+    except (ValueError, OSError, OllamaServiceError, EmbeddingServiceError) as exc:
         LOGGER.error("%s", exc)
         raise SystemExit(1) from None

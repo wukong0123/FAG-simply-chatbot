@@ -23,8 +23,19 @@ class OllamaClient:
                 "Chưa cài package ollama. Hãy chạy: pip install -r requirements.txt"
             ) from exc
         self.config = config
+        if config.ollama_base_url.startswith("https://ollama.com") and not config.ollama_api_key:
+            raise OllamaServiceError(
+                "Thiếu OLLAMA_API_KEY để gọi Ollama Cloud. Hãy cấu hình trong file .env."
+            )
+        headers = (
+            {"Authorization": f"Bearer {config.ollama_api_key}"}
+            if config.ollama_api_key
+            else None
+        )
         self.client = ollama.Client(
-            host=config.ollama_base_url, timeout=config.request_timeout_seconds
+            host=config.ollama_base_url,
+            timeout=config.request_timeout_seconds,
+            headers=headers,
         )
 
     def _friendly_error(self, exc: Exception, model: str | None = None) -> OllamaServiceError:

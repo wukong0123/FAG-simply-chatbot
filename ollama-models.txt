@@ -1,2 +1,3 @@
+# Chỉ cần tải khi dùng Ollama local thay cho cloud:
 embeddinggemma
 qwen3:1.7b
