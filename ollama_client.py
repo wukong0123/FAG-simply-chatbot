@@ -131,3 +131,33 @@ class OllamaClient:
             raise
         except Exception as exc:
             raise self._friendly_error(exc, self.config.chat_model) from exc
+
+    def rewrite_question(
+        self, question: str, history: list[dict[str, str]]
+    ) -> str:
+        """Rewrite a contextual follow-up as a standalone retrieval query."""
+        recent_history = history[-6:]
+        conversation = "\n".join(
+            f"{item['role']}: {item['content']}"
+            for item in recent_history
+            if item.get("role") in {"user", "assistant"} and item.get("content")
+        )
+        prompt = (
+            "Dựa vào lịch sử, hãy viết lại CÂU HỎI MỚI thành một câu hỏi độc lập "
+            "để tìm kiếm tài liệu. Thay đại từ và từ viết tắt bằng tên đối tượng "
+            "đầy đủ đã được xác định trong lịch sử. Nếu câu hỏi có nhiều ý, phải "
+            "giữ lại đầy đủ mọi ý. Trong chatbot này, WC hoặc World Cup không nêu "
+            "năm được hiểu là FIFA World Cup 2026. Giữ nguyên ngôn ngữ người dùng. "
+            "Chỉ xuất câu hỏi đã viết lại, không trả lời và không giải thích.\n\n"
+            f"LỊCH SỬ:\n{conversation}\n\nCÂU HỎI MỚI:\n{question}"
+        )
+        try:
+            response = self.client.chat(
+                model=self.config.chat_model,
+                messages=[{"role": "user", "content": prompt}],
+                options={"temperature": 0},
+            )
+            rewritten = response["message"]["content"].strip().strip('"')
+            return rewritten or question
+        except Exception as exc:
+            raise self._friendly_error(exc, self.config.chat_model) from exc

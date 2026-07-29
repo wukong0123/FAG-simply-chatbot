@@ -1,5 +1,5 @@
 [
-  {"id": 1, "question": "What is the FIFA World Cup 2026?", "aliases": ["FIFA World Cup 2026 là gì?", "Giới thiệu World Cup 2026"], "answer": "Đây là kỳ FIFA World Cup lần thứ 23, giải đấu bóng đá nam quốc tế lớn nhất thế giới.", "category": "overview"},
+  {"id": 1, "question": "What is the FIFA World Cup 2026?", "aliases": ["FIFA World Cup 2026 là gì?", "WC là gì? WC là viết tắt của World Cup"], "answer": "Đây là kỳ FIFA World Cup lần thứ 23, giải đấu bóng đá nam quốc tế lớn nhất thế giới.", "category": "overview"},
   {"id": 2, "question": "Which countries host the 2026 World Cup?", "aliases": ["Những nước nào đăng cai World Cup 2026?", "World Cup 2026 được tổ chức ở đâu?"], "answer": "Giải đấu được tổ chức tại Hoa Kỳ, Canada và Mexico.", "category": "hosts"},
   {"id": 3, "question": "How many teams participate in World Cup 2026?", "aliases": ["World Cup 2026 có bao nhiêu đội tham dự?", "Có bao nhiêu quốc gia tranh tài năm 2026?"], "answer": "Có kỷ lục 48 đội tuyển quốc gia tham dự giải.", "category": "format"},
   {"id": 4, "question": "Why is World Cup 2026 historic?", "aliases": ["Vì sao World Cup 2026 mang tính lịch sử?", "Điều gì đặc biệt ở World Cup 2026?"], "answer": "Đây là World Cup đầu tiên do ba quốc gia đồng tổ chức và cũng là lần đầu có 48 đội tham dự.", "category": "overview"},

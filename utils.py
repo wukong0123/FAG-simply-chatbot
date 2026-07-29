@@ -3,6 +3,7 @@
 import hashlib
 import json
 from pathlib import Path
+import re
 from typing import Any
 
 import numpy as np
@@ -10,6 +11,40 @@ import numpy as np
 
 class DataValidationError(ValueError):
     """Raised when FAQ input is invalid."""
+
+
+FOLLOW_UP_MARKERS = (
+    "nó",
+    "đó",
+    "này",
+    "họ",
+    "còn",
+    "thế",
+    "vậy",
+    "như vậy",
+    "ở đâu",
+)
+
+
+def is_contextual_follow_up(question: str, has_history: bool) -> bool:
+    """Detect questions that likely depend on preceding conversation."""
+    if not has_history:
+        return False
+    normalized = f" {question.casefold().strip()} "
+    return any(f" {marker} " in normalized for marker in FOLLOW_UP_MARKERS)
+
+
+def normalize_retrieval_query(question: str) -> str:
+    """Normalize domain abbreviations for deterministic World Cup retrieval."""
+    if re.search(r"\b2026\b", question):
+        return question
+    normalized = re.sub(
+        r"\b(?:FIFA\s+)?World\s+Cup\b",
+        "FIFA World Cup 2026",
+        question,
+        flags=re.IGNORECASE,
+    )
+    return re.sub(r"\bWC\b", "FIFA World Cup 2026", normalized, flags=re.IGNORECASE)
 
 
 def validate_faqs(raw: Any) -> list[dict[str, Any]]:

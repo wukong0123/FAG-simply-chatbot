@@ -8,11 +8,13 @@ from config import settings
 from embedding_client import EmbeddingServiceError, create_embedding_client
 from ollama_client import OllamaClient, OllamaServiceError
 from retriever import Retriever, StorageError
+from utils import is_contextual_follow_up, normalize_retrieval_query
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 LOGGER = logging.getLogger(__name__)
 FALLBACK = "Tôi chưa tìm thấy thông tin phù hợp trong dữ liệu hiện có."
 MAX_HISTORY_MESSAGES = 8
+DIRECT_ANSWER_THRESHOLD = 0.90
 
 
 @cl.on_chat_start
@@ -58,7 +60,15 @@ async def on_message(message: cl.Message) -> None:
     response = cl.Message(content="Đang tìm thông tin phù hợp...")
     await response.send()
     try:
-        matches, rejected = retriever.retrieve(question)
+        retrieval_question = question
+        if is_contextual_follow_up(question, bool(history)):
+            try:
+                retrieval_question = client.rewrite_question(question, history)
+                LOGGER.info("Đã viết lại câu hỏi nối tiếp để retrieval.")
+            except OllamaServiceError as exc:
+                LOGGER.warning("Không thể viết lại câu hỏi nối tiếp: %s", exc)
+        retrieval_question = normalize_retrieval_query(retrieval_question)
+        matches, rejected = retriever.retrieve(retrieval_question)
         if rejected:
             response.content = FALLBACK
             answer_for_history = FALLBACK
@@ -69,10 +79,7 @@ async def on_message(message: cl.Message) -> None:
                 for item in matches
                 if item["score"] >= max(settings.similarity_threshold, top_score - 0.15)
             ]
-            score_gap = (
-                top_score - matches[1]["score"] if len(matches) > 1 else top_score
-            )
-            if top_score >= 0.65 or score_gap >= 0.05:
+            if top_score >= DIRECT_ANSWER_THRESHOLD:
                 answer = matches[0]["answer"]
             else:
                 try:

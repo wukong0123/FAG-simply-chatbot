@@ -2,7 +2,13 @@ import json
 
 import pytest
 
-from utils import DataValidationError, load_faqs, validate_faqs
+from utils import (
+    DataValidationError,
+    is_contextual_follow_up,
+    load_faqs,
+    normalize_retrieval_query,
+    validate_faqs,
+)
 
 
 VALID = [{"id": 1, "question": " Câu hỏi? ", "answer": " Trả lời. "}]
@@ -43,3 +49,29 @@ def test_invalid_json(tmp_path):
     path.write_text("{invalid", encoding="utf-8")
     with pytest.raises(DataValidationError, match="JSON không hợp lệ"):
         load_faqs(path)
+
+
+def test_contextual_follow_up_detection():
+    assert is_contextual_follow_up("Nó được diễn ra ở đâu?", has_history=True)
+    assert not is_contextual_follow_up("Nó được diễn ra ở đâu?", has_history=False)
+    assert not is_contextual_follow_up(
+        "World Cup 2026 có bao nhiêu đội?", has_history=True
+    )
+
+
+@pytest.mark.parametrize(
+    ("question", "expected"),
+    [
+        ("WC diễn ra ở đâu?", "FIFA World Cup 2026 diễn ra ở đâu?"),
+        (
+            "FIFA World Cup diễn ra khi nào?",
+            "FIFA World Cup 2026 diễn ra khi nào?",
+        ),
+        (
+            "World Cup 2026 có bao nhiêu đội?",
+            "World Cup 2026 có bao nhiêu đội?",
+        ),
+    ],
+)
+def test_normalize_retrieval_query(question, expected):
+    assert normalize_retrieval_query(question) == expected
