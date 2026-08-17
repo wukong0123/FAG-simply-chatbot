@@ -13,8 +13,15 @@ from ollama_client import OllamaClient, OllamaServiceError
 from retriever import Retriever, StorageError
 from utils import is_contextual_follow_up, normalize_retrieval_query
 
-logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
-LOGGER = logging.getLogger(__name__)
+LOGGER = logging.getLogger("faq_chatbot")
+LOGGER.setLevel(logging.INFO)
+if not LOGGER.handlers:
+    terminal_handler = logging.StreamHandler()
+    terminal_handler.setFormatter(
+        logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s")
+    )
+    LOGGER.addHandler(terminal_handler)
+LOGGER.propagate = False
 FALLBACK = "Tôi chưa tìm thấy thông tin phù hợp trong dữ liệu hiện có."
 MAX_HISTORY_MESSAGES = 8
 DIRECT_ANSWER_THRESHOLD = 0.90
@@ -93,6 +100,12 @@ async def on_message(message: cl.Message) -> None:
     retriever: Retriever | None = cl.user_session.get("retriever")
     client: OllamaClient | None = cl.user_session.get("client")
     history: list[dict[str, str]] = cl.user_session.get("history") or []
+    LOGGER.info(
+        "session=%s history_messages=%d question=%r",
+        cl.context.session.id,
+        len(history),
+        question,
+    )
     if retriever is None or client is None:
         await cl.Message(content="Chatbot chưa sẵn sàng. Hãy tải lại trang.").send()
         return
