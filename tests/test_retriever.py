@@ -1,3 +1,4 @@
+import asyncio
 import json
 from dataclasses import replace
 
@@ -7,6 +8,11 @@ import pytest
 from config import settings
 from retriever import Retriever, StorageError
 from utils import faq_content_hash
+
+
+class AsyncEmbeddingClient:
+    async def embed_async(self, _):
+        return [[0.9, 0.1]]
 
 
 def make_config(tmp_path, threshold=0.5):
@@ -42,6 +48,15 @@ def make_config(tmp_path, threshold=0.5):
 def test_top_k_order_without_real_ollama(tmp_path):
     retriever = Retriever(config=make_config(tmp_path), embed_fn=lambda _: [0.9, 0.1])
     matches, rejected = retriever.retrieve("query", top_k=2)
+    assert [item["id"] for item in matches] == [1, 2]
+    assert not rejected
+
+
+def test_async_retrieval_without_blocking_client(tmp_path):
+    retriever = Retriever(
+        config=make_config(tmp_path), client=AsyncEmbeddingClient()
+    )
+    matches, rejected = asyncio.run(retriever.retrieve_async("query"))
     assert [item["id"] for item in matches] == [1, 2]
     assert not rejected
 

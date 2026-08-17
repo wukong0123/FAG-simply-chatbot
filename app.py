@@ -1,9 +1,12 @@
 """Chainlit user interface for the FAQ chatbot."""
 
 import logging
+import statistics
+import time
 
 import chainlit as cl
 
+from async_utils import ServiceTimeoutError, run_async
 from config import settings
 from embedding_client import EmbeddingServiceError, create_embedding_client
 from ollama_client import OllamaClient, OllamaServiceError
@@ -17,12 +20,47 @@ MAX_HISTORY_MESSAGES = 8
 DIRECT_ANSWER_THRESHOLD = 0.90
 
 
+class LatencyStats:
+    """Simple rolling latency statistics."""
+
+    def __init__(self, max_samples: int = 1000) -> None:
+        self.max_samples = max_samples
+        self._samples: list[float] = []
+
+    def add(self, seconds: float) -> None:
+        self._samples.append(seconds)
+        if len(self._samples) > self.max_samples:
+            self._samples.pop(0)
+
+    def _percentile(self, percentile: float) -> float:
+        if not self._samples:
+            return 0.0
+        values = sorted(self._samples)
+        index = min(len(values) - 1, max(0, int(percentile / 100.0 * len(values) - 1)))
+        return values[index]
+
+    def summary(self) -> tuple[float, float, float]:
+        if not self._samples:
+            return 0.0, 0.0, 0.0
+        avg = statistics.mean(self._samples)
+        p95 = self._percentile(95)
+        p99 = self._percentile(99)
+        return avg, p95, p99
+
+
+latency_stats = LatencyStats()
+
+
 @cl.on_chat_start
 async def on_chat_start() -> None:
     """Initialize dependencies and greet the user."""
     try:
         client = OllamaClient()
-        client.check_server()
+        await run_async(
+            client.check_server_async(),
+            timeout_seconds=settings.request_timeout_seconds,
+            operation="Ollama",
+        )
         retriever = Retriever(client=create_embedding_client())
         cl.user_session.set("client", client)
         cl.user_session.set("retriever", retriever)
@@ -37,6 +75,7 @@ async def on_chat_start() -> None:
         OllamaServiceError,
         EmbeddingServiceError,
         StorageError,
+        ServiceTimeoutError,
         ValueError,
         OSError,
     ) as exc:
@@ -59,16 +98,25 @@ async def on_message(message: cl.Message) -> None:
         return
     response = cl.Message(content="Đang tìm thông tin phù hợp...")
     await response.send()
+    start_time = time.monotonic()
     try:
         retrieval_question = question
         if is_contextual_follow_up(question, bool(history)):
             try:
-                retrieval_question = client.rewrite_question(question, history)
+                retrieval_question = await run_async(
+                    client.rewrite_question_async(question, history),
+                    timeout_seconds=settings.request_timeout_seconds,
+                    operation="Ollama",
+                )
                 LOGGER.info("Đã viết lại câu hỏi nối tiếp để retrieval.")
-            except OllamaServiceError as exc:
+            except (OllamaServiceError, ServiceTimeoutError) as exc:
                 LOGGER.warning("Không thể viết lại câu hỏi nối tiếp: %s", exc)
         retrieval_question = normalize_retrieval_query(retrieval_question)
-        matches, rejected = retriever.retrieve(retrieval_question)
+        matches, rejected = await run_async(
+            retriever.retrieve_async(retrieval_question),
+            timeout_seconds=settings.request_timeout_seconds,
+            operation="Dịch vụ embedding",
+        )
         if rejected:
             response.content = FALLBACK
             answer_for_history = FALLBACK
@@ -83,10 +131,14 @@ async def on_message(message: cl.Message) -> None:
                 answer = matches[0]["answer"]
             else:
                 try:
-                    answer = client.chat(
-                        question, relevant_matches, history=history
+                    answer = await run_async(
+                        client.chat_async(
+                            question, relevant_matches, history=history
+                        ),
+                        timeout_seconds=settings.request_timeout_seconds,
+                        operation="Ollama",
                     )
-                except OllamaServiceError as exc:
+                except (OllamaServiceError, ServiceTimeoutError) as exc:
                     LOGGER.warning("LLM lỗi, dùng câu trả lời FAQ gần nhất: %s", exc)
                     answer = matches[0]["answer"]
             sources = "\n".join(
@@ -95,7 +147,13 @@ async def on_message(message: cl.Message) -> None:
             )
             response.content = f"{answer}\n\nNguồn tham khảo:\n{sources}"
             answer_for_history = answer
-    except (ValueError, StorageError, OllamaServiceError, EmbeddingServiceError) as exc:
+    except (
+        ValueError,
+        StorageError,
+        OllamaServiceError,
+        EmbeddingServiceError,
+        ServiceTimeoutError,
+    ) as exc:
         LOGGER.exception("Xử lý câu hỏi thất bại")
         response.content = str(exc)
         answer_for_history = response.content
@@ -106,4 +164,13 @@ async def on_message(message: cl.Message) -> None:
         ]
     )
     cl.user_session.set("history", history[-MAX_HISTORY_MESSAGES:])
+    elapsed = time.monotonic() - start_time
+    latency_stats.add(elapsed)
+    avg_ms, p95_ms, p99_ms = (value * 1000 for value in latency_stats.summary())
+    LOGGER.info(
+        "Response latency: %.0fms avg / %.0fms p95 / %.0fms p99",
+        avg_ms,
+        p95_ms,
+        p99_ms,
+    )
     await response.update()

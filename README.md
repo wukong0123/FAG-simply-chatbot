@@ -181,6 +181,14 @@ python ingest.py
 
 ## Lỗi thường gặp
 
+- Chainlit báo `Could not reach the server` sau khi gửi câu hỏi: các lời gọi
+  Gemini/Ollama phải chạy bất đồng bộ để WebSocket vẫn duy trì heartbeat.
+  Phiên bản hiện tại đã xử lý việc này và sẽ hiển thị lỗi timeout nếu dịch vụ
+  cloud không phản hồi trong `REQUEST_TIMEOUT_SECONDS`.
+- Truy cập từ máy khác trong mạng LAN: chạy
+  `chainlit run app.py --host 0.0.0.0 --port 8000`, mở cổng 8000 trên firewall
+  và truy cập bằng địa chỉ IP của máy chạy chatbot. `127.0.0.1` chỉ cho phép
+  truy cập ngay trên chính máy đó.
 - Ollama 401/403: kiểm tra API key hoặc quyền dùng model; một số model yêu cầu
   subscription.
 - Gemini 401/403: API key sai hoặc project chưa có quyền.
