@@ -66,14 +66,17 @@ class Retriever:
         service = self.client or create_embedding_client(self.config)
         return np.asarray(service.embed(question)[0], dtype=np.float32)
 
-    def retrieve(
-        self, question: str, top_k: int | None = None
+    async def _embed_query_async(self, question: str) -> np.ndarray:
+        if self.embed_fn:
+            return np.asarray(self.embed_fn(question), dtype=np.float32)
+        service = self.client or create_embedding_client(self.config)
+        vectors = await service.embed_async(question)
+        return np.asarray(vectors[0], dtype=np.float32)
+
+    def _rank(
+        self, query_embedding: np.ndarray, top_k: int | None
     ) -> tuple[list[dict[str, Any]], bool]:
-        """Return ranked matches and whether the query should be rejected."""
-        clean_question = " ".join(question.split())
-        if not clean_question:
-            raise ValueError("Vui lòng nhập câu hỏi.")
-        scores = cosine_scores(self.embeddings, self._embed_query(clean_question))
+        scores = cosine_scores(self.embeddings, query_embedding)
         limit = min(top_k or self.config.top_k, len({faq["id"] for faq in self.faqs}))
         matches = []
         seen_ids: set[Any] = set()
@@ -87,3 +90,23 @@ class Retriever:
                 break
         rejected = not matches or matches[0]["score"] < self.config.similarity_threshold
         return matches, rejected
+
+    def _clean_question(self, question: str) -> str:
+        clean_question = " ".join(question.split())
+        if not clean_question:
+            raise ValueError("Vui lòng nhập câu hỏi.")
+        return clean_question
+
+    def retrieve(
+        self, question: str, top_k: int | None = None
+    ) -> tuple[list[dict[str, Any]], bool]:
+        """Return ranked matches and whether the query should be rejected."""
+        clean_question = self._clean_question(question)
+        return self._rank(self._embed_query(clean_question), top_k)
+
+    async def retrieve_async(
+        self, question: str, top_k: int | None = None
+    ) -> tuple[list[dict[str, Any]], bool]:
+        """Retrieve matches without blocking on the embedding service."""
+        clean_question = self._clean_question(question)
+        return self._rank(await self._embed_query_async(clean_question), top_k)

@@ -3,6 +3,7 @@ __pycache__/
 .pytest_cache/
 .test-tmp*/
 .env
+.env copy
 *.log
 storage/*.npy
 storage/metadata.json

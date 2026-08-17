@@ -16,6 +16,9 @@ class EmbeddingClient(Protocol):
     def embed(self, texts: str | list[str]) -> list[list[float]]:
         """Create a batch of embedding vectors."""
 
+    async def embed_async(self, texts: str | list[str]) -> list[list[float]]:
+        """Create embeddings without blocking the event loop."""
+
 
 class GeminiEmbeddingClient:
     """Generate embeddings with the managed Gemini API."""
@@ -37,6 +40,31 @@ class GeminiEmbeddingClient:
         self.types = types
         self.client = genai.Client(api_key=config.gemini_api_key)
 
+    def _config(self):
+        return self.types.EmbedContentConfig(
+            output_dimensionality=self.config.embedding_dimensions
+        )
+
+    def _vectors(self, response, expected_count: int) -> list[list[float]]:
+        vectors = [embedding.values for embedding in response.embeddings or []]
+        if len(vectors) != expected_count:
+            raise EmbeddingServiceError(
+                "Số embedding Gemini trả về không khớp số văn bản đầu vào."
+            )
+        return vectors
+
+    def _friendly_error(self, exc: Exception) -> EmbeddingServiceError:
+        text = str(exc)
+        if "429" in text:
+            return EmbeddingServiceError(
+                "Gemini Embedding đã vượt quota/rate limit. Vui lòng thử lại sau."
+            )
+        if "403" in text or "API key" in text:
+            return EmbeddingServiceError(
+                "GEMINI_API_KEY không hợp lệ hoặc chưa có quyền sử dụng model."
+            )
+        return EmbeddingServiceError(f"Gemini Embedding trả về lỗi: {exc}")
+
     def embed(self, texts: str | list[str]) -> list[list[float]]:
         """Create Gemini embeddings with a stable configured dimension."""
         contents = [texts] if isinstance(texts, str) else texts
@@ -44,29 +72,28 @@ class GeminiEmbeddingClient:
             response = self.client.models.embed_content(
                 model=self.config.embedding_model,
                 contents=contents,
-                config=self.types.EmbedContentConfig(
-                    output_dimensionality=self.config.embedding_dimensions
-                ),
+                config=self._config(),
             )
-            vectors = [embedding.values for embedding in response.embeddings or []]
-            if len(vectors) != len(contents):
-                raise EmbeddingServiceError(
-                    "Số embedding Gemini trả về không khớp số văn bản đầu vào."
-                )
-            return vectors
+            return self._vectors(response, len(contents))
         except EmbeddingServiceError:
             raise
         except Exception as exc:
-            text = str(exc)
-            if "429" in text:
-                raise EmbeddingServiceError(
-                    "Gemini Embedding đã vượt quota/rate limit. Vui lòng thử lại sau."
-                ) from exc
-            if "403" in text or "API key" in text:
-                raise EmbeddingServiceError(
-                    "GEMINI_API_KEY không hợp lệ hoặc chưa có quyền sử dụng model."
-                ) from exc
-            raise EmbeddingServiceError(f"Gemini Embedding trả về lỗi: {exc}") from exc
+            raise self._friendly_error(exc) from exc
+
+    async def embed_async(self, texts: str | list[str]) -> list[list[float]]:
+        """Create Gemini embeddings without blocking the event loop."""
+        contents = [texts] if isinstance(texts, str) else texts
+        try:
+            response = await self.client.aio.models.embed_content(
+                model=self.config.embedding_model,
+                contents=contents,
+                config=self._config(),
+            )
+            return self._vectors(response, len(contents))
+        except EmbeddingServiceError:
+            raise
+        except Exception as exc:
+            raise self._friendly_error(exc) from exc
 
 
 def create_embedding_client(config: Settings = settings) -> EmbeddingClient:

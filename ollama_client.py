@@ -37,6 +37,11 @@ class OllamaClient:
             timeout=config.request_timeout_seconds,
             headers=headers,
         )
+        self.async_client = ollama.AsyncClient(
+            host=config.ollama_base_url,
+            timeout=config.request_timeout_seconds,
+            headers=headers,
+        )
 
     def _friendly_error(self, exc: Exception, model: str | None = None) -> OllamaServiceError:
         status = getattr(exc, "status_code", None)
@@ -67,6 +72,13 @@ class OllamaClient:
         except Exception as exc:
             raise self._friendly_error(exc) from exc
 
+    async def check_server_async(self) -> None:
+        """Check that Ollama is reachable without blocking the event loop."""
+        try:
+            await self.async_client.list()
+        except Exception as exc:
+            raise self._friendly_error(exc) from exc
+
     def embed(self, texts: str | list[str]) -> list[list[float]]:
         """Create embeddings and return them as a batch."""
         try:
@@ -82,13 +94,27 @@ class OllamaClient:
         except Exception as exc:
             raise self._friendly_error(exc, self.config.embedding_model) from exc
 
-    def chat(
+    async def embed_async(self, texts: str | list[str]) -> list[list[float]]:
+        """Create embeddings without blocking the event loop."""
+        try:
+            response = await self.async_client.embed(
+                model=self.config.embedding_model, input=texts
+            )
+            vectors = response.get("embeddings", [])
+            if not vectors:
+                raise OllamaServiceError("Ollama trả về embedding rỗng.")
+            return vectors
+        except OllamaServiceError:
+            raise
+        except Exception as exc:
+            raise self._friendly_error(exc, self.config.embedding_model) from exc
+
+    def _chat_messages(
         self,
         question: str,
         matches: list[dict[str, Any]],
-        history: list[dict[str, str]] | None = None,
-    ) -> str:
-        """Generate a grounded Vietnamese answer."""
+        history: list[dict[str, str]] | None,
+    ) -> list[dict[str, str]]:
         context_blocks = []
         for index, item in enumerate(matches, start=1):
             context_blocks.append(
@@ -117,8 +143,60 @@ class OllamaClient:
             if item.get("role") in {"user", "assistant"} and item.get("content")
         )
         messages.append({"role": "user", "content": user})
+        return messages
+
+    def chat(
+        self,
+        question: str,
+        matches: list[dict[str, Any]],
+        history: list[dict[str, str]] | None = None,
+    ) -> str:
+        """Generate a grounded Vietnamese answer."""
+        messages = self._chat_messages(question, matches, history)
         try:
             response = self.client.chat(
+                model=self.config.chat_model,
+                messages=messages,
+                options={"temperature": 0.1},
+            )
+            content = response["message"]["content"].strip()
+            if not content:
+                raise OllamaServiceError("Chat model trả về nội dung rỗng.")
+            return content
+        except OllamaServiceError:
+            raise
+        except Exception as exc:
+            raise self._friendly_error(exc, self.config.chat_model) from exc
+
+    def _rewrite_prompt(
+        self, question: str, history: list[dict[str, str]]
+    ) -> str:
+        recent_history = history[-6:]
+        conversation = "\n".join(
+            f"{item['role']}: {item['content']}"
+            for item in recent_history
+            if item.get("role") in {"user", "assistant"} and item.get("content")
+        )
+        return (
+            "Dựa vào lịch sử, hãy viết lại CÂU HỎI MỚI thành một câu hỏi độc lập "
+            "để tìm kiếm tài liệu. Thay đại từ và từ viết tắt bằng tên đối tượng "
+            "đầy đủ đã được xác định trong lịch sử. Nếu câu hỏi có nhiều ý, phải "
+            "giữ lại đầy đủ mọi ý. Trong chatbot này, WC hoặc World Cup không nêu "
+            "năm được hiểu là FIFA World Cup 2026. Giữ nguyên ngôn ngữ người dùng. "
+            "Chỉ xuất câu hỏi đã viết lại, không trả lời và không giải thích.\n\n"
+            f"LỊCH SỬ:\n{conversation}\n\nCÂU HỎI MỚI:\n{question}"
+        )
+
+    async def chat_async(
+        self,
+        question: str,
+        matches: list[dict[str, Any]],
+        history: list[dict[str, str]] | None = None,
+    ) -> str:
+        """Generate a grounded answer without blocking the event loop."""
+        messages = self._chat_messages(question, matches, history)
+        try:
+            response = await self.async_client.chat(
                 model=self.config.chat_model,
                 messages=messages,
                 options={"temperature": 0.1},
@@ -136,23 +214,25 @@ class OllamaClient:
         self, question: str, history: list[dict[str, str]]
     ) -> str:
         """Rewrite a contextual follow-up as a standalone retrieval query."""
-        recent_history = history[-6:]
-        conversation = "\n".join(
-            f"{item['role']}: {item['content']}"
-            for item in recent_history
-            if item.get("role") in {"user", "assistant"} and item.get("content")
-        )
-        prompt = (
-            "Dựa vào lịch sử, hãy viết lại CÂU HỎI MỚI thành một câu hỏi độc lập "
-            "để tìm kiếm tài liệu. Thay đại từ và từ viết tắt bằng tên đối tượng "
-            "đầy đủ đã được xác định trong lịch sử. Nếu câu hỏi có nhiều ý, phải "
-            "giữ lại đầy đủ mọi ý. Trong chatbot này, WC hoặc World Cup không nêu "
-            "năm được hiểu là FIFA World Cup 2026. Giữ nguyên ngôn ngữ người dùng. "
-            "Chỉ xuất câu hỏi đã viết lại, không trả lời và không giải thích.\n\n"
-            f"LỊCH SỬ:\n{conversation}\n\nCÂU HỎI MỚI:\n{question}"
-        )
+        prompt = self._rewrite_prompt(question, history)
         try:
             response = self.client.chat(
+                model=self.config.chat_model,
+                messages=[{"role": "user", "content": prompt}],
+                options={"temperature": 0},
+            )
+            rewritten = response["message"]["content"].strip().strip('"')
+            return rewritten or question
+        except Exception as exc:
+            raise self._friendly_error(exc, self.config.chat_model) from exc
+
+    async def rewrite_question_async(
+        self, question: str, history: list[dict[str, str]]
+    ) -> str:
+        """Rewrite a follow-up question without blocking the event loop."""
+        prompt = self._rewrite_prompt(question, history)
+        try:
+            response = await self.async_client.chat(
                 model=self.config.chat_model,
                 messages=[{"role": "user", "content": prompt}],
                 options={"temperature": 0},
